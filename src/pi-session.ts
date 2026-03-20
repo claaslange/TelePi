@@ -360,6 +360,10 @@ function resolveSessionPathForRuntime(sessionPath: string): string {
   const suffix = sessionPath.slice(markerIndex + marker.length);
   for (const base of ["/home/telepi/.pi/agent", "/root/.pi/agent"]) {
     const remapped = path.resolve(base, suffix);
+    // Ensure remapped path stays within the base directory (prevent traversal)
+    if (!remapped.startsWith(base + path.sep) && remapped !== base) {
+      continue;
+    }
     if (existsSync(remapped)) {
       return remapped;
     }

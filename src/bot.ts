@@ -51,7 +51,9 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
   bot.use(async (ctx, next) => {
     const fromId = ctx.from?.id;
     if (!fromId || !config.telegramAllowedUserIdSet.has(fromId)) {
-      if (ctx.chat) {
+      if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery({ text: "Unauthorized" }).catch(() => {});
+      } else if (ctx.chat) {
         await safeReply(ctx, escapeHTML("Unauthorized"), { fallbackText: "Unauthorized" });
       }
       return;
@@ -926,7 +928,8 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
   });
 
   bot.catch((error) => {
-    console.error("Telegram bot error", error.error);
+    const msg = error.error instanceof Error ? error.error.message : String(error.error);
+    console.error("Telegram bot error:", msg);
   });
 
   return bot;

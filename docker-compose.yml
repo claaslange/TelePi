@@ -12,8 +12,6 @@ services:
       - ./workspace:/workspace:rw
     cap_drop:
       - ALL
-    cap_add:
-      - NET_RAW
     security_opt:
       - no-new-privileges:true
     deploy:
