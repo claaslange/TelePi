@@ -813,6 +813,54 @@ describe("createBot", () => {
     expect(api.editMessageText).toHaveBeenCalled();
   });
 
+  it("keeps the show-all button while paging through scoped models", async () => {
+    const scopedModels = Array.from({ length: 7 }, (_, index) => ({
+      provider: "github-copilot",
+      id: `codex-${index}`,
+      name: `Codex ${index}`,
+      current: index === 0,
+    }));
+    const allModels = [
+      ...Array.from({ length: 2 }, (_, index) => ({
+        provider: "openai",
+        id: `gpt-${index}`,
+        name: `GPT ${index}`,
+        current: false,
+      })),
+      ...scopedModels,
+    ];
+    const listModels = vi.fn().mockImplementation((showAll?: boolean) =>
+      Promise.resolve(showAll ? allModels : scopedModels),
+    );
+
+    const { bot, api } = setupBot({
+      piSessionOverrides: {
+        listModels,
+      },
+    });
+
+    await bot.handleUpdate(createTestUpdate({ message: { text: "/model" } }));
+    expect(getReplyMarkupData(api)).toEqual([
+      "model_0",
+      "model_1",
+      "model_2",
+      "model_3",
+      "model_4",
+      "model_5",
+      "noop_page",
+      "model_page_1",
+      "model_show_all",
+    ]);
+
+    await bot.handleUpdate(createCallbackUpdate("model_page_1"));
+    expect(getEditedReplyMarkupButtons(api).map((button) => button.callback_data)).toEqual([
+      "model_6",
+      "model_page_0",
+      "noop_page",
+      "model_show_all",
+    ]);
+  });
+
   it("paginates model pickers across all available models", async () => {
     const models = generateMockModels(21);
     const { bot, pi, api } = setupBot({

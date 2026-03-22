@@ -115,6 +115,7 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
   const pendingWorkspaceButtons = new Map<number, KeyboardItem[]>();
   const pendingModelPicks = new Map<number, Array<{ provider: string; id: string }>>();
   const pendingModelButtons = new Map<number, KeyboardItem[]>();
+  const pendingModelExtraButtons = new Map<number, KeyboardItem[]>();
   const pendingTreeNavs = new Map<number, string>();
   const pendingTreeButtons = new Map<number, KeyboardItem[]>();
   const pendingTreeFilterButtons = new Map<number, KeyboardItem[]>();
@@ -927,12 +928,11 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
 
     const allModels = showAll ? models : await piSession.listModels(true);
     const hasScopedSubset = !showAll && models.length > 0 && models.length < allModels.length;
-    const keyboard = buildKeyboard(
-      modelButtons,
-      0,
-      "model",
-      hasScopedSubset ? [{ label: "Show all models", callbackData: "model_show_all" }] : [],
-    );
+    const extraButtons = hasScopedSubset
+      ? [{ label: "Show all models", callbackData: "model_show_all" }]
+      : [];
+    pendingModelExtraButtons.set(chatId, extraButtons);
+    const keyboard = buildKeyboard(modelButtons, 0, "model", extraButtons);
 
     const info = piSession.getInfo();
     const currentModelText = info.model ? `Current: ${info.model}` : "No model selected";
@@ -1182,7 +1182,13 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
 
   handlePageCallback(/^switch_page_(\d+)$/, "switch", pendingSessionButtons, "Expired, run /sessions again");
   handlePageCallback(/^newws_page_(\d+)$/, "newws", pendingWorkspaceButtons, "Expired, run /new again");
-  handlePageCallback(/^model_page_(\d+)$/, "model", pendingModelButtons, "Expired, run /model again");
+  handlePageCallback(
+    /^model_page_(\d+)$/,
+    "model",
+    pendingModelButtons,
+    "Expired, run /model again",
+    pendingModelExtraButtons,
+  );
   handlePageCallback(
     /^tree_page_(\d+)$/,
     "tree",
@@ -1338,6 +1344,7 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
     await ctx.answerCallbackQuery({ text: "Switching model..." });
     pendingModelPicks.delete(chatId);
     pendingModelButtons.delete(chatId);
+    pendingModelExtraButtons.delete(chatId);
 
     isSwitching = true;
     try {
