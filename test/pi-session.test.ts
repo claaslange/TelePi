@@ -44,6 +44,17 @@ const mockState = vi.hoisted(() => {
       model: options.model ?? models[0],
       scopedModels: options.scopedModels ?? [],
       isStreaming: false,
+      agent: {
+        state: {
+          tools: [
+            { name: "read", description: "Read files", execute: vi.fn() },
+            { name: "bash", description: "Execute bash", execute: vi.fn(), label: "bash", parameters: {} },
+            { name: "edit", description: "Edit files", execute: vi.fn() },
+            { name: "write", description: "Write files", execute: vi.fn() },
+          ],
+        },
+        setTools: vi.fn(),
+      },
       prompt: vi.fn().mockResolvedValue(undefined),
       abort: vi.fn().mockResolvedValue(undefined),
       newSession: vi.fn().mockResolvedValue(true),

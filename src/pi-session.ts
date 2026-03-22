@@ -15,6 +15,15 @@ import { resolveModelScope } from "../node_modules/@mariozechner/pi-coding-agent
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import type { TelePiConfig } from "./config.js";
+
+/**
+ * Default timeout (seconds) for bash commands in TelePi sessions.
+ *
+ * TelePi runs headless — interactive commands (e.g. `pi models`, `vim`)
+ * or long-running scans (e.g. `find ~`) would hang forever without a timeout.
+ * The LLM can still pass an explicit `timeout` to override this per-call.
+ */
+const DEFAULT_BASH_TIMEOUT_SECONDS = 120;
 import { describeEntry, type SessionTreeNodeLike as SessionTreeNode } from "./tree.js";
 
 export interface PiSessionCallbacks {
@@ -41,6 +50,40 @@ interface PiSessionHandle {
   dispose: () => void;
 }
 
+/**
+ * Patch the bash tool on a live session to enforce a default timeout.
+ *
+ * The Pi SDK bash tool has no default timeout — if the LLM omits `timeout`,
+ * commands run indefinitely. In TelePi's headless context this causes hangs
+ * on interactive commands (e.g. `pi models` launches a TUI).
+ *
+ * We can't override the tool via `createAgentSession({ tools })` because the
+ * SDK only reads tool names from that option and rebuilds implementations
+ * internally. Instead, we patch the live tool on `session.agent` after creation.
+ */
+function patchBashTimeout(session: AgentSession): void {
+  const tools = session.agent.state.tools;
+  const patched = tools.map((tool) => {
+    if (tool.name !== "bash") return tool;
+
+    const originalExecute = tool.execute;
+    return {
+      ...tool,
+      description:
+        tool.description +
+        ` Commands time out after ${DEFAULT_BASH_TIMEOUT_SECONDS} seconds by default. Pass a longer timeout for slow commands (e.g. npm install, test suites).`,
+      execute: (toolCallId: string, args: { command: string; timeout?: number }, signal?: AbortSignal, onUpdate?: any) =>
+        originalExecute(
+          toolCallId,
+          { ...args, timeout: args.timeout ?? DEFAULT_BASH_TIMEOUT_SECONDS },
+          signal,
+          onUpdate,
+        ),
+    };
+  });
+  session.agent.setTools(patched);
+}
+
 export async function createPiSession(
   config: TelePiConfig,
   overrideSessionPath?: string,
@@ -64,6 +107,7 @@ export async function createPiSession(
     settingsManager,
     tools: createCodingTools(workspace),
   });
+  patchBashTimeout(session);
 
   return {
     session,
@@ -91,6 +135,7 @@ async function createNewPiSession(config: TelePiConfig, workspace: string): Prom
     settingsManager,
     tools: createCodingTools(workspace),
   });
+  patchBashTimeout(session);
 
   return {
     session,
