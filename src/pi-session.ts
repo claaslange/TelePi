@@ -5,16 +5,18 @@ import {
   AuthStorage,
   createAgentSession,
   createCodingTools,
+  DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
   SettingsManager,
   type AgentSession,
   type SessionEntry,
+  type Skill,
 } from "@mariozechner/pi-coding-agent";
 import { resolveModelScope } from "../node_modules/@mariozechner/pi-coding-agent/dist/core/model-resolver.js";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
-import type { TelePiConfig } from "./config.js";
+import type { TelePiConfig, SkillsMode } from "./config.js";
 import { describeEntry, type SessionTreeNodeLike as SessionTreeNode } from "./tree.js";
 
 export interface PiSessionCallbacks {
@@ -41,6 +43,44 @@ interface PiSessionHandle {
   dispose: () => void;
 }
 
+/**
+ * Create a ResourceLoader that filters skills based on the configured mode.
+ *
+ * TelePi is a remote interface — skills designed for interactive CLI use
+ * (e.g. those depending on local tools) can cause hangs or crashes.
+ * By default, no skills are loaded. Users opt-in via PI_SKILLS env var.
+ */
+async function createResourceLoader(workspace: string, skillsMode: SkillsMode): Promise<DefaultResourceLoader> {
+  const loader = new DefaultResourceLoader({
+    cwd: workspace,
+    skillsOverride: (current) => ({
+      skills: filterSkills(current.skills, skillsMode),
+      diagnostics: current.diagnostics,
+    }),
+  });
+  await loader.reload();
+  return loader;
+}
+
+function filterSkills(skills: Skill[], mode: SkillsMode): Skill[] {
+  if (mode === "all") {
+    return skills;
+  }
+
+  if (mode === "none") {
+    return [];
+  }
+
+  // Allowlist mode
+  const allowed = new Set(mode);
+  const result = skills.filter((skill) => allowed.has(skill.name));
+  const missing = mode.filter((name) => !result.some((s) => s.name === name));
+  if (missing.length > 0) {
+    console.warn(`PI_SKILLS: requested skills not found: ${missing.join(", ")}`);
+  }
+  return result;
+}
+
 export async function createPiSession(
   config: TelePiConfig,
   overrideSessionPath?: string,
@@ -53,6 +93,7 @@ export async function createPiSession(
   const settingsManager = SettingsManager.create(workspace);
   const model = resolveModelOverride(modelRegistry, config.piModel);
   const scopedModels = await resolveScopedModels(settingsManager, modelRegistry);
+  const resourceLoader = await createResourceLoader(workspace, config.piSkills);
 
   const { session, modelFallbackMessage } = await createAgentSession({
     cwd: workspace,
@@ -63,6 +104,7 @@ export async function createPiSession(
     sessionManager,
     settingsManager,
     tools: createCodingTools(workspace),
+    resourceLoader,
   });
 
   return {
@@ -80,6 +122,7 @@ async function createNewPiSession(config: TelePiConfig, workspace: string): Prom
   const settingsManager = SettingsManager.create(workspace);
   const model = resolveModelOverride(modelRegistry, config.piModel);
   const scopedModels = await resolveScopedModels(settingsManager, modelRegistry);
+  const resourceLoader = await createResourceLoader(workspace, config.piSkills);
 
   const { session, modelFallbackMessage } = await createAgentSession({
     cwd: workspace,
@@ -90,6 +133,7 @@ async function createNewPiSession(config: TelePiConfig, workspace: string): Prom
     sessionManager,
     settingsManager,
     tools: createCodingTools(workspace),
+    resourceLoader,
   });
 
   return {

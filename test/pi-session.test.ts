@@ -130,10 +130,21 @@ const mockState = vi.hoisted(() => {
     }),
   );
 
+  const resourceLoaderInstances: any[] = [];
+  const DefaultResourceLoader = vi.fn().mockImplementation((options: any) => {
+    const instance = {
+      options,
+      reload: vi.fn().mockResolvedValue(undefined),
+    };
+    resourceLoaderInstances.push(instance);
+    return instance;
+  });
+
   return {
     models,
     createdSessions,
     modelRegistryInstances,
+    resourceLoaderInstances,
     createAgentSession,
     createCodingTools,
     AuthStorage,
@@ -141,6 +152,7 @@ const mockState = vi.hoisted(() => {
     SessionManager,
     SettingsManager,
     resolveModelScope,
+    DefaultResourceLoader,
     getSubscriber: (session: object) => sessionSubscribers.get(session),
     reset: () => {
       sessionCounter = 0;
@@ -156,6 +168,8 @@ const mockState = vi.hoisted(() => {
       SessionManager.listAll.mockResolvedValue(defaultSessions());
       SettingsManager.create.mockClear();
       resolveModelScope.mockClear();
+      resourceLoaderInstances.length = 0;
+      DefaultResourceLoader.mockClear();
     },
   };
 });
@@ -164,6 +178,7 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
   createAgentSession: mockState.createAgentSession,
   createCodingTools: mockState.createCodingTools,
   AuthStorage: mockState.AuthStorage,
+  DefaultResourceLoader: mockState.DefaultResourceLoader,
   ModelRegistry: mockState.ModelRegistry,
   SessionManager: mockState.SessionManager,
   SettingsManager: mockState.SettingsManager,
@@ -184,6 +199,7 @@ describe("PiSessionService", () => {
     piSessionPath: undefined,
     piModel: undefined,
     toolVerbosity: "summary",
+    piSkills: "none",
     ...overrides,
   });
 
@@ -197,6 +213,10 @@ describe("PiSessionService", () => {
     expect(mockState.AuthStorage.create).toHaveBeenCalledTimes(1);
     expect(mockState.ModelRegistry).toHaveBeenCalledTimes(1);
     expect(mockState.SettingsManager.create).toHaveBeenCalledWith("/workspace/base");
+    expect(mockState.DefaultResourceLoader).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/workspace/base" }),
+    );
+    expect(mockState.resourceLoaderInstances[0]?.reload).toHaveBeenCalledTimes(1);
     expect(mockState.createCodingTools).toHaveBeenCalledWith("/workspace/base");
     expect(mockState.createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -204,6 +224,7 @@ describe("PiSessionService", () => {
         tools: ["mock-tool"],
         model: undefined,
         scopedModels: [],
+        resourceLoader: mockState.resourceLoaderInstances[0],
       }),
     );
 
@@ -215,6 +236,59 @@ describe("PiSessionService", () => {
       modelFallbackMessage: "fallback-model",
       model: "anthropic/claude-sonnet-4-5",
     });
+  });
+
+  it("loads no skills by default (piSkills: none)", async () => {
+    await PiSessionService.create(createConfig());
+
+    const resourceLoader = mockState.createAgentSession.mock.calls[0]?.[0]?.resourceLoader;
+    expect(resourceLoader).toBeDefined();
+
+    const filtered = resourceLoader.options.skillsOverride({
+      skills: [
+        { name: "frontend-design" },
+        { name: "qmd-session-search" },
+        { name: "browser-tools" },
+      ],
+      diagnostics: ["warning"],
+    });
+
+    expect(filtered).toEqual({
+      skills: [],
+      diagnostics: ["warning"],
+    });
+  });
+
+  it("loads all skills when piSkills is 'all'", async () => {
+    await PiSessionService.create(createConfig({ piSkills: "all" }));
+
+    const resourceLoader = mockState.createAgentSession.mock.calls[0]?.[0]?.resourceLoader;
+    const input = {
+      skills: [
+        { name: "frontend-design" },
+        { name: "qmd-session-search" },
+      ],
+      diagnostics: [],
+    };
+    const filtered = resourceLoader.options.skillsOverride(input);
+
+    expect(filtered.skills).toEqual(input.skills);
+  });
+
+  it("loads only allowlisted skills when piSkills is an array", async () => {
+    await PiSessionService.create(createConfig({ piSkills: ["browser-tools"] }));
+
+    const resourceLoader = mockState.createAgentSession.mock.calls[0]?.[0]?.resourceLoader;
+    const filtered = resourceLoader.options.skillsOverride({
+      skills: [
+        { name: "frontend-design" },
+        { name: "qmd-session-search" },
+        { name: "browser-tools" },
+      ],
+      diagnostics: [],
+    });
+
+    expect(filtered.skills).toEqual([{ name: "browser-tools" }]);
   });
 
   it("resolves PI_MODEL overrides during creation", async () => {
