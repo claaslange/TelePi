@@ -43,7 +43,7 @@ TelePi is a Telegram bridge for the [Pi coding agent](https://github.com/badlogi
    npm run dev
    ```
 
-4. Optional — required if using launchd mode: build TelePi:
+4. If using launchd mode, build TelePi first:
    ```bash
    npm run build
    ```

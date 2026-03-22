@@ -25,5 +25,9 @@
 
   <key>StandardErrorPath</key>
   <string>/ABSOLUTE/PATH/TO/telepi.err.log</string>
+
+  <!-- PI_SESSION_PATH is intentionally absent here. It is injected at runtime
+       by the /handoff extension via: launchctl setenv PI_SESSION_PATH <path>
+       followed by a kickstart. TelePi reads it from process.env on startup. -->
 </dict>
 </plist>

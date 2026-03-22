@@ -70,16 +70,18 @@ launchctl kickstart -k "gui/$UID/$label"`,
           } else {
             ctx.ui.notify(
               "Could not restart TelePi via launchd. Verify the LaunchAgent is loaded and try manually:\n" +
-              `launchctl setenv PI_SESSION_PATH "${sessionFile}"\n` +
-              `launchctl kickstart -k gui/$UID/${launchdLabel}`,
+              `launchctl setenv PI_SESSION_PATH '${safeSessionFile}'\n` +
+              `launchctl kickstart -k gui/$UID/'${safeLaunchdLabel}'`,
               "warning",
             );
           }
         } catch {
+          // pi.exec() only throws on OS-level failure (e.g. timeout); non-zero exit codes are
+          // handled above via result.code. This catch is a last-resort safety net.
           ctx.ui.notify(
             "Could not restart TelePi via launchd. Verify the LaunchAgent is loaded and try manually:\n" +
-            `launchctl setenv PI_SESSION_PATH "${sessionFile}"\n` +
-            `launchctl kickstart -k gui/$UID/${launchdLabel}`,
+            `launchctl setenv PI_SESSION_PATH '${safeSessionFile}'\n` +
+            `launchctl kickstart -k gui/$UID/'${safeLaunchdLabel}'`,
             "warning",
           );
         }
