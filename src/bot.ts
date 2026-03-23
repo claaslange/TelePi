@@ -8,7 +8,7 @@ import { autoRetry } from "@grammyjs/auto-retry";
 
 import type { TelePiConfig, ToolVerbosity } from "./config.js";
 import { escapeHTML, formatTelegramHTML } from "./format.js";
-import { type PiSessionInfo, type PiSessionService } from "./pi-session.js";
+import { type PiSessionInfo, type PiSessionModelOption, type PiSessionService } from "./pi-session.js";
 import {
   renderBranchConfirmation,
   renderLabels,
@@ -113,7 +113,7 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
   const pendingSessionButtons = new Map<number, KeyboardItem[]>();
   const pendingWorkspacePicks = new Map<number, string[]>();
   const pendingWorkspaceButtons = new Map<number, KeyboardItem[]>();
-  const pendingModelPicks = new Map<number, Array<{ provider: string; id: string }>>();
+  const pendingModelPicks = new Map<number, PiSessionModelOption[]>();
   const pendingModelButtons = new Map<number, KeyboardItem[]>();
   const pendingModelExtraButtons = new Map<number, KeyboardItem[]>();
   const pendingTreeNavs = new Map<number, string>();
@@ -910,17 +910,15 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
       return;
     }
 
-    pendingModelPicks.set(
-      chatId,
-      models.map((model) => ({ provider: model.provider, id: model.id })),
-    );
+    pendingModelPicks.set(chatId, models);
 
     const modelButtons = models.map((model, index) => {
       const prefix = model.current ? "✅ " : "";
       const modelRef = `${model.provider}/${model.id}`;
       const nameSuffix = model.name && model.name !== model.id ? ` · ${model.name}` : "";
+      const thinkingSuffix = model.thinkingLevel ? ` : ${model.thinkingLevel}` : "";
       return {
-        label: `${prefix}${modelRef}${nameSuffix}`,
+        label: `${prefix}${modelRef}${nameSuffix}${thinkingSuffix}`,
         callbackData: `model_${index}`,
       };
     });
@@ -1348,7 +1346,11 @@ export function createBot(config: TelePiConfig, piSession: PiSessionService): Bo
 
     isSwitching = true;
     try {
-      const modelName = await piSession.setModel(models[index].provider, models[index].id);
+      const modelName = await piSession.setModel(
+        models[index].provider,
+        models[index].id,
+        models[index].thinkingLevel,
+      );
       const html = `<b>Model switched to:</b> <code>${escapeHTML(modelName)}</code>`;
       const plainText = `Model switched to: ${modelName}`;
 
