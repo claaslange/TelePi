@@ -12,6 +12,7 @@ import {
   type SessionEntry,
 } from "@mariozechner/pi-coding-agent";
 import { resolveModelScope } from "../node_modules/@mariozechner/pi-coding-agent/dist/core/model-resolver.js";
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import type { TelePiConfig } from "./config.js";
@@ -41,6 +42,14 @@ export interface PiSessionInfo {
   sessionName?: string;
   modelFallbackMessage?: string;
   model?: string;
+}
+
+export interface PiSessionModelOption {
+  provider: string;
+  id: string;
+  name: string;
+  current: boolean;
+  thinkingLevel?: ThinkingLevel;
 }
 
 interface PiSessionHandle {
@@ -306,9 +315,15 @@ export class PiSessionService {
     return { info: this.getInfo(), created };
   }
 
-  async listModels(showAll = false): Promise<Array<{ provider: string; id: string; name: string; current: boolean }>> {
+  async listModels(showAll = false): Promise<PiSessionModelOption[]> {
     const session = this.getSession();
     const currentModel = session.model;
+    const scopedThinkingLevels = new Map(
+      session.scopedModels.map((scoped) => [
+        `${scoped.model.provider}/${scoped.model.id}`,
+        scoped.thinkingLevel,
+      ]),
+    );
     const available = showAll || session.scopedModels.length === 0
       ? this.getModelRegistry().getAvailable()
       : session.scopedModels.map((scoped) => scoped.model);
@@ -320,16 +335,21 @@ export class PiSessionService {
       current: currentModel
         ? model.provider === currentModel.provider && model.id === currentModel.id
         : false,
+      thinkingLevel: scopedThinkingLevels.get(`${model.provider}/${model.id}`),
     }));
   }
 
-  async setModel(provider: string, modelId: string): Promise<string> {
+  async setModel(provider: string, modelId: string, thinkingLevel?: ThinkingLevel): Promise<string> {
+    const session = this.getSession();
     const modelRegistry = this.getModelRegistry();
     const model = modelRegistry.find(provider, modelId);
     if (!model) {
       throw new Error(`Model not found: ${provider}/${modelId}`);
     }
-    await this.getSession().setModel(model);
+    await session.setModel(model);
+    if (thinkingLevel !== undefined) {
+      session.setThinkingLevel(thinkingLevel);
+    }
     return `${model.provider}/${model.id}`;
   }
 

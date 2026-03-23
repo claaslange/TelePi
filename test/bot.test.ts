@@ -764,6 +764,7 @@ describe("createBot", () => {
         id: "codex",
         name: "Codex",
         current: true,
+        thinkingLevel: "high",
       },
     ];
     const allModels = [
@@ -772,6 +773,7 @@ describe("createBot", () => {
         id: "codex",
         name: "Codex",
         current: false,
+        thinkingLevel: undefined,
       },
       ...scopedModels,
     ];
@@ -791,7 +793,7 @@ describe("createBot", () => {
     expect(api.sendMessage.mock.calls[0]?.[1]).toContain("Showing the current Pi model scope.");
     expect(getReplyMarkupData(api)).toEqual(["model_0", "model_show_all"]);
     expect(getReplyMarkupTexts(api)).toEqual([
-      "✅ github-copilot/codex · Codex",
+      "✅ github-copilot/codex · Codex : high",
       "Show all models",
     ]);
     expect(listModels).toHaveBeenNthCalledWith(1, false);
@@ -804,13 +806,37 @@ describe("createBot", () => {
     expect(getEditedReplyMarkupData(api, 0)).toEqual(["model_0", "model_1"]);
     expect(getEditedReplyMarkupTexts(api, 0)).toEqual([
       "openai/codex · Codex",
-      "✅ github-copilot/codex · Codex",
+      "✅ github-copilot/codex · Codex : high",
     ]);
 
     await bot.handleUpdate(createCallbackUpdate("model_0"));
     expect(api.answerCallbackQuery).toHaveBeenCalledWith("cb_1", { text: "Switching model..." });
-    expect(pi.service.setModel).toHaveBeenCalledWith("openai", "codex");
+    expect(pi.service.setModel).toHaveBeenCalledWith("openai", "codex", undefined);
     expect(api.editMessageText).toHaveBeenCalled();
+  });
+
+  it("applies the scoped thinking-level override when selecting a scoped model", async () => {
+    const listModels = vi.fn().mockResolvedValue([
+      {
+        provider: "github-copilot",
+        id: "codex",
+        name: "Codex",
+        current: true,
+        thinkingLevel: "high",
+      },
+    ]);
+
+    const { bot, pi } = setupBot({
+      piSessionOverrides: {
+        listModels,
+        setModel: vi.fn().mockResolvedValue("github-copilot/codex"),
+      },
+    });
+
+    await bot.handleUpdate(createTestUpdate({ message: { text: "/model" } }));
+    await bot.handleUpdate(createCallbackUpdate("model_0"));
+
+    expect(pi.service.setModel).toHaveBeenCalledWith("github-copilot", "codex", "high");
   });
 
   it("keeps the show-all button while paging through scoped models", async () => {
@@ -891,7 +917,7 @@ describe("createBot", () => {
     ]);
 
     await bot.handleUpdate(createCallbackUpdate("model_20"));
-    expect(pi.service.setModel).toHaveBeenCalledWith("provider20", "model-20");
+    expect(pi.service.setModel).toHaveBeenCalledWith("provider20", "model-20", undefined);
   });
 
   it("handles /tree command variants and missing sessions", async () => {

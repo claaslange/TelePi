@@ -42,6 +42,7 @@ const mockState = vi.hoisted(() => {
       sessionFile: options.sessionFile ?? `/tmp/session-${sessionCounter}.jsonl`,
       sessionName: options.sessionName,
       model: options.model ?? models[0],
+      thinkingLevel: options.thinkingLevel ?? "medium",
       scopedModels: options.scopedModels ?? [],
       isStreaming: false,
       agent: {
@@ -78,6 +79,9 @@ const mockState = vi.hoisted(() => {
       },
       setModel: vi.fn().mockImplementation(async (model) => {
         session.model = model;
+      }),
+      setThinkingLevel: vi.fn().mockImplementation((thinkingLevel) => {
+        session.thinkingLevel = thinkingLevel;
       }),
       subscribe: vi.fn().mockImplementation((callback) => {
         sessionSubscribers.set(session, callback);
@@ -430,12 +434,14 @@ describe("PiSessionService", () => {
         id: "claude-sonnet-4-5",
         name: "Claude Sonnet",
         current: true,
+        thinkingLevel: undefined,
       },
       {
         provider: "openai",
         id: "gpt-4o",
         name: "GPT-4o",
         current: false,
+        thinkingLevel: undefined,
       },
     ]);
   });
@@ -444,7 +450,7 @@ describe("PiSessionService", () => {
     const service = await PiSessionService.create(createConfig());
     const currentSession = mockState.createdSessions[0]?.session;
 
-    currentSession.scopedModels = [{ model: mockState.models[1] }];
+    currentSession.scopedModels = [{ model: mockState.models[1], thinkingLevel: "high" }];
 
     await expect(service.listModels()).resolves.toEqual([
       {
@@ -452,6 +458,7 @@ describe("PiSessionService", () => {
         id: "gpt-4o",
         name: "GPT-4o",
         current: false,
+        thinkingLevel: "high",
       },
     ]);
   });
@@ -460,7 +467,7 @@ describe("PiSessionService", () => {
     const service = await PiSessionService.create(createConfig());
     const currentSession = mockState.createdSessions[0]?.session;
 
-    currentSession.scopedModels = [{ model: mockState.models[1] }];
+    currentSession.scopedModels = [{ model: mockState.models[1], thinkingLevel: "high" }];
 
     await expect(service.listModels(true)).resolves.toEqual([
       {
@@ -468,12 +475,14 @@ describe("PiSessionService", () => {
         id: "claude-sonnet-4-5",
         name: "Claude Sonnet",
         current: true,
+        thinkingLevel: undefined,
       },
       {
         provider: "openai",
         id: "gpt-4o",
         name: "GPT-4o",
         current: false,
+        thinkingLevel: "high",
       },
     ]);
   });
@@ -506,6 +515,20 @@ describe("PiSessionService", () => {
       id: "gpt-4o",
       name: "GPT-4o",
     });
+    expect(currentSession.setThinkingLevel).not.toHaveBeenCalled();
+  });
+
+  it("applies a scoped thinking-level override when switching models", async () => {
+    const service = await PiSessionService.create(createConfig());
+    const currentSession = mockState.createdSessions[0]?.session;
+
+    await expect(service.setModel("openai", "gpt-4o", "high")).resolves.toBe("openai/gpt-4o");
+    expect(currentSession.setModel).toHaveBeenCalledWith({
+      provider: "openai",
+      id: "gpt-4o",
+      name: "GPT-4o",
+    });
+    expect(currentSession.setThinkingLevel).toHaveBeenCalledWith("high");
   });
 
   it("delegates tree access, navigation, and labels", async () => {
